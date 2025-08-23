@@ -1,4 +1,10 @@
+import math
+
 from torch import nn
+from torch.nn import functional as F
+from encoder import Encoder
+from decoder import Decoder
+from positional_encoding import PositionalEncoding
 
 
 class Transformer(nn.Module):
@@ -16,12 +22,43 @@ class Transformer(nn.Module):
 
         self.d_model = d_model
 
-        self.encoder = ...
-        self.decoder = ...
+        self.encoder = Encoder(d_model, num_heads, num_encoders)
+        self.decoder = Decoder(d_model, num_heads, num_decoders)
 
-        self.pos_encoding = ...
+        self.pos_encoding = PositionalEncoding(d_model, max_len)
 
         self.src_embedding = nn.Embedding(src_vocab_size, d_model)
         self.tgt_embedding = nn.Embedding(tgt_vocab_size, d_model)
 
         self.output = nn.Linear(d_model, tgt_vocab_size)
+
+    def create_pad_mask(self, seq, pad_token):
+        return (seq != pad_token).unsqueeze(1).unsqueeze(2)
+
+    def create_subsequent_mask(self, size):
+        mask = torch.triu(torch.ones(size, size), diagonal=1).bool()
+        return ~mask
+
+    def forward(self, src, tgt, src_pad_token=0, tgt_pad_token=0):
+        # Init masks
+        src_mask = self.create_pad_mask(src, src_pad_token)
+        tgt_mask = self.create_pad_mask(tgt, tgt_pad_token)
+        subsequent_mask = self.create_subsequent_mask(tgt.size(1)).to(tgt.device)
+        tgt_mask = tgt_mask & subsequent_mask
+
+        src_emb = self.src_embedding(src) * math.sqrt(self.d_model)
+        tgt_emb = self.tgt_embedding(tgt) * math.sqrt(self.d_model)
+
+        src_emb = self.pos_encoding(src_emb)
+        tgt_emb = self.pos_encoding(tgt_emb)
+
+        encoder_output = self.encoder(src_emb, src_mask)
+        decoder_output = self.decoder(tgt_emb, encoder_output, tgt_mask, src_mask)
+
+        output = self.output(decoder_output)
+        return output
+
+    def training_step(self, src, tgt_input, expected):
+        output = self.forward(src, tgt_input)
+        loss = F.cross_entropy(output.view(-1, output.size(-1)), expected.view(-1))
+        return loss
