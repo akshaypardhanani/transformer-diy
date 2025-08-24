@@ -1,3 +1,5 @@
+from multi_headed_attention import MultiHeadedAttention
+from feed_forward import FeedForward
 from torch import nn
 
 

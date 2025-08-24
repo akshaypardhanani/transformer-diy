@@ -1,8 +1,9 @@
+import math
 import torch
 
 
 from torch import nn
-from torch.optim.sparse_adam import F
+from torch.nn import functional as F
 
 
 class SelfAttention(nn.Module):
@@ -29,5 +30,5 @@ class SelfAttention(nn.Module):
         weights = F.softmax(scores, dim=-1)
         weights = self.dropout(weights)
 
-        outputs = torch.bmm(weights, value)
+        outputs = torch.bmm(weights, v)
         return outputs

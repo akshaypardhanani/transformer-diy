@@ -1,4 +1,5 @@
 import math
+import torch
 
 from torch import nn
 from torch.nn import functional as F
@@ -37,7 +38,7 @@ class Transformer(nn.Module):
 
     def create_subsequent_mask(self, size):
         mask = torch.triu(torch.ones(size, size), diagonal=1).bool()
-        return ~mask
+        return (~mask).unsqueeze(0).unsqueeze(1)
 
     def forward(self, src, tgt, src_pad_token=0, tgt_pad_token=0):
         # Init masks
@@ -58,7 +59,7 @@ class Transformer(nn.Module):
         output = self.output(decoder_output)
         return output
 
-    def training_step(self, src, tgt_input, expected):
+    def training_step(self, src, tgt_input, expected, pad_id=0):
         output = self.forward(src, tgt_input)
-        loss = F.cross_entropy(output.view(-1, output.size(-1)), expected.view(-1))
+        loss = F.cross_entropy(output.view(-1, output.size(-1)), expected.view(-1), ignore_index=pad_id)
         return loss

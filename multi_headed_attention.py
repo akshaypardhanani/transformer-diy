@@ -1,6 +1,7 @@
 import torch
 
 
+from self_attention import SelfAttention
 from torch import nn
 
 
@@ -10,7 +11,7 @@ class MultiHeadedAttention(nn.Module):
 
         self.d_model = d_model
         self.num_heads = num_heads
-        self.attention_output_size = self.d_models // self.num_heads
+        self.attention_output_size = self.d_model // self.num_heads
 
         self.attentions = nn.ModuleList(
             [
@@ -25,5 +26,6 @@ class MultiHeadedAttention(nn.Module):
         x = torch.cat(
             [layer(query, key, value, mask) for layer in self.attentions], dim=-1
         )
+        self.last_attn_per_head = [layer.last_attn for layer in self.attentions]
         x = self.output(x)
         return x

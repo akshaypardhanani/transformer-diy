@@ -1,4 +1,5 @@
-from turtle import forward
+from multi_headed_attention import MultiHeadedAttention
+from feed_forward import FeedForward
 from torch import nn
 
 
@@ -15,10 +16,10 @@ class EncoderLayer(nn.Module):
 
     def forward(self, src, src_mask=None):
         x = src
-        x = self.self_attention(x, x, x, src_mask)
+        x = x + self.self_attention(x, x, x, src_mask)
         x = self.self_attention_norm(x)
 
-        x = self.feed_forward_network(x)
+        x = x +self.feed_forward_network(x)
         x = self.feed_forward_network_norm(x)
 
         return x
