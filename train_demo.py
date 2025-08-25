@@ -8,8 +8,14 @@ from tokenizers import Tokenizer, models, trainers, pre_tokenizers
 from tqdm import tqdm
 
 from transformer import Transformer
+from lr_warmup import WarmupLR
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+if torch.backends.mps.is_available():
+    DEVICE = "mps"
+elif torch.cuda.is_available():
+    DEVICE = "cuda"
+else:
+    DEVICE = "cpu"
 BOS, EOS, PAD, UNK = "[BOS]", "[EOS]", "[PAD]", "[UNK]"
 
 def build_tokenizer(text_iter, vocab_size=8000):
@@ -58,29 +64,32 @@ def main():
 
     # 3) Dataloader
     random.shuffle(pairs)
-    train_pairs = pairs[:40000] if len(pairs) > 40000 else pairs
+    train_pairs = pairs
     loader = DataLoader(train_pairs, batch_size=32, shuffle=True,
                         collate_fn=lambda b: collate(b, tok))
 
     # 4) Model
     model = Transformer(
-        d_model=256, num_heads=4, num_encoders=3, num_decoders=3,
-        src_vocab_size=vocab_size, tgt_vocab_size=vocab_size, max_len=512
+        d_model=512, num_heads=8, num_encoders=6, num_decoders=6,
+        src_vocab_size=vocab_size, tgt_vocab_size=vocab_size, max_len=16384
     ).to(DEVICE)
 
-    opt = torch.optim.Adam(model.parameters(), lr=3e-4, betas=(0.9, 0.98), eps=1e-9)
+    opt = torch.optim.Adam(model.parameters(), lr=1.0, betas=(0.9, 0.98), eps=1e-9)
+    sched = WarmupLR(opt, d_model=model.d_model, warmup_steps=1000)
 
     # 5) Train a couple of steps to demonstrate updates
     model.train()
-    for step, (src, tgt_in, tgt_out, pad_id) in enumerate(tqdm(loader, total=200)):
-        if step == 200: break  # short demo
+    for step, (src, tgt_in, tgt_out, pad_id) in enumerate(tqdm(loader, total=2000)):
+        if step == 2000: break  # short demo
         opt.zero_grad()
         loss = model.training_step(src, tgt_in, tgt_out, pad_id=pad_id)
         loss.backward()
         opt.step()
+        sched.step()
 
         if step % 50 == 0:
-            print(f"step {step} | loss {loss.item():.4f}")
+            lr_now = sched.get_last_lr()[0]
+            print(f"step {step} | loss {loss.item():.4f} | lr {lr_now:.6f}")
 
             # (Optional) Peek at attention of first encoder layer, head 0
             enc0 = model.encoder.encoding_layers[0].self_attention
@@ -94,6 +103,15 @@ def main():
         src, tgt_in, tgt_out, pad_id = collate([train_pairs[0]], tok)
         logits = model(src, tgt_in)
         print("Logits shape:", tuple(logits.shape))  # [B, T, vocab]
+
+    # 6) Save model + tokenizer
+    save_path = "transformer_en_fr.pt"
+    torch.save({
+        "model_state": model.state_dict(),
+        "vocab_size": vocab_size,
+        "tokenizer_json": tok.to_str(),  # serialize tokenizer
+    }, save_path)
+    print(f"Model saved to {save_path}")
 
 if __name__ == "__main__":
     main()
