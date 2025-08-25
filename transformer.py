@@ -34,18 +34,29 @@ class Transformer(nn.Module):
         self.output = nn.Linear(d_model, tgt_vocab_size)
 
     def create_pad_mask(self, seq, pad_token):
-        return (seq != pad_token).unsqueeze(1).unsqueeze(2)
+        # return (seq != pad_token).unsqueeze(1).unsqueeze(2)
+        mask = (seq != pad_token)   # [B, S]
+        mask = mask.unsqueeze(1).expand(-1, seq.size(1), -1)  # [B, S, S]
+        return mask 
 
-    def create_subsequent_mask(self, size):
-        mask = torch.triu(torch.ones(size, size), diagonal=1).bool()
-        return (~mask).unsqueeze(0).unsqueeze(1)
+    def create_subsequent_mask(self, size, batch_size):
+        # mask = torch.triu(torch.ones(size, size), diagonal=1).bool()
+        # return (~mask).unsqueeze(0).unsqueeze(1)
+        mask = torch.tril(torch.ones(size, size, dtype=torch.bool))  # [T,T]
+        mask = mask.unsqueeze(0).expand(batch_size, -1, -1)          # [B,T,T]
+        return mask
 
     def forward(self, src, tgt, src_pad_token=0, tgt_pad_token=0):
+        B, S = src.size()
+        _, T = tgt.size()
         # Init masks
         src_mask = self.create_pad_mask(src, src_pad_token)
         tgt_mask = self.create_pad_mask(tgt, tgt_pad_token)
-        subsequent_mask = self.create_subsequent_mask(tgt.size(1)).to(tgt.device)
+        # subsequent_mask = self.create_subsequent_mask(tgt.size(1)).to(tgt.device)
+        subsequent_mask = self.create_subsequent_mask(T, B).to(tgt.device)
         tgt_mask = tgt_mask & subsequent_mask
+
+        cross_mask = (src != src_pad_token).unsqueeze(1).expand(-1, T, -1)
 
         src_emb = self.src_embedding(src) * math.sqrt(self.d_model)
         tgt_emb = self.tgt_embedding(tgt) * math.sqrt(self.d_model)
@@ -54,7 +65,7 @@ class Transformer(nn.Module):
         tgt_emb = self.pos_encoding(tgt_emb)
 
         encoder_output = self.encoder(src_emb, src_mask)
-        decoder_output = self.decoder(tgt_emb, encoder_output, tgt_mask, src_mask)
+        decoder_output = self.decoder(tgt_emb, tgt_mask, encoder_output, cross_mask)
 
         output = self.output(decoder_output)
         return output

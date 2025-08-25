@@ -15,20 +15,30 @@ class SelfAttention(nn.Module):
         self.value = nn.Linear(d_model, output_size)
         self.dropout = nn.Dropout(dropout)
 
+        self.last_attn = None
+
     def forward(self, query, key, value, mask=None):
         q = self.query(query)
         k = self.key(key)
         v = self.value(value)
 
+        print("DEBUG SA: q", q.shape, "k", k.shape, "v", v.shape)
+
         dim_k = k.size(-1)
 
         scores = torch.bmm(q, k.transpose(1, 2)) / math.sqrt(dim_k)
 
-        if mask:
+        print("DEBUG SA: scores", scores.shape)
+
+        if mask is not None:
+            print("DEBUG SA: mask raw", mask.shape, mask.dtype)
             scores = scores.masked_fill(mask == 0, -float("inf"))
 
         weights = F.softmax(scores, dim=-1)
+        print("DEBUG SA: weights", weights.shape)
         weights = self.dropout(weights)
+        print("DEBUG SA: weights dropout", weights.shape)
 
         outputs = torch.bmm(weights, v)
+        print("DEBUG SA: outputs", outputs.shape)
         return outputs
